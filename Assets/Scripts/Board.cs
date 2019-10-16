@@ -1,9 +1,12 @@
+using System.Collections.Generic;
 using UnityEngine;
 using UnityEngine.UI;
 
 public enum TileStatus
 {
-    None, X, O
+    X = -1,
+    None = 0, 
+    O = 1
 }
 
 public class Board : MonoBehaviour
@@ -39,6 +42,7 @@ public class Board : MonoBehaviour
 
     private void Reset()
     {
+        currentPlayer = TileStatus.X;
         for (int i = 0; i < goTiles.Length; i++)
         {
             goTiles[i].GetComponentInChildren<Text>().text = string.Empty;
@@ -55,89 +59,185 @@ public class Board : MonoBehaviour
 
     public void PickTile(Vector2Int position)
     {
-        TileStatus tile = tiles[position.x, position.y];
-        if(tile == TileStatus.None)
+        if(SetTile(position) == true)
         {
-            tile = currentPlayer;
-            tiles[position.x, position.y] = tile;
-            GetTileGO(position).GetComponentInChildren<Text>().text = tile.ToString();
-
-            if(CheckIfWon(position) == true)
+            if(CheckIfWon(tiles) != TileStatus.None)
             {
                 Debug.Log(currentPlayer.ToString() + " WON!");
                 Reset();
                 return;
             }
-
+            else if(GetOpenTiles(tiles) <= 0)
+            {
+                Debug.Log("DRAW!");
+                Reset();
+                return;
+            }
             currentPlayer = currentPlayer == TileStatus.X ? TileStatus.O : TileStatus.X;
-            Debug.Log("Picked tile " + position);
-        }
-        else
-        {
-            Debug.Log("This tile is already taken.");
+
+            if(SetTile(AIMove()))
+            {
+                if(CheckIfWon(tiles) != TileStatus.None)
+                {
+                    Debug.Log(currentPlayer.ToString() + " WON!");
+                    Reset();
+                    return;
+                }
+                currentPlayer = currentPlayer == TileStatus.X ? TileStatus.O : TileStatus.X;
+            }
         }
     }
 
-    private bool CheckIfWon(Vector2Int position)
+    private bool SetTile(Vector2Int position)
     {
-        // Check vertical
-        for (int i = 0; i < 3; i++)
+        TileStatus tile = tiles[position.x, position.y];
+        if(tile != TileStatus.None)
         {
-            if(tiles[position.x, i] != currentPlayer)
+            Debug.Log("This tile is already taken.");
+            return false;
+        }
+
+        tile = currentPlayer;
+        tiles[position.x, position.y] = tile;
+        GetTileGO(position).GetComponentInChildren<Text>().text = tile.ToString();
+        return true;
+    }
+
+    private Vector2Int AIMove()
+    {
+        Vector2Int move = new Vector2Int(-1, -1);
+        int score = -2;
+
+        for (int y = 0; y < 3; y++)
+        {
+            for (int x = 0; x < 3; x++)
             {
-                break;
-            }
-            if(i == 2)
-            {
-                return true;
+                if(tiles[x, y] == TileStatus.None)
+                {
+                    TileStatus[,] newBoard = (TileStatus[,]) tiles.Clone();
+                    newBoard[x, y] = currentPlayer;
+                    int scoreForTheMove = -MiniMax(newBoard, (TileStatus)((int)currentPlayer * -1));
+                    if(scoreForTheMove > score)
+                    {
+                        score = scoreForTheMove;
+                        move = new Vector2Int(x, y);
+                    }
+                }
             }
         }
 
+        return move;
+    }
+
+    private TileStatus CheckIfWon(TileStatus[,] tiles)
+    {
         // Check horizontal
-        for (int i = 0; i < 3; i++)
+        for (int y = 0; y < 3; y++)
         {
-            if(tiles[i, position.y] != currentPlayer)
+            for (int x = 1; x < 3; x++)
             {
-                break;
+                if(tiles[x, y] != tiles[x - 1, y])
+                {
+                    break;
+                }
+                if(tiles[x, y] != TileStatus.None && x == 2)
+                {
+                    return tiles[x, y];
+                }
             }
-            if(i == 2)
+        }
+
+        // Check vertical
+        for (int x = 0; x < 3; x++)
+        {
+            for (int y = 1; y < 3; y++)
             {
-                return true;
-            }        
+                if(tiles[x, y] != tiles[x, y - 1])
+                {
+                    break;
+                }
+                if(tiles[x, y] != TileStatus.None && y == 2)
+                {
+                    return tiles[x, y];
+                }   
+            }     
         }
 
         // Check diagonal right
-        if(position == new Vector2Int(1,1) || position == new Vector2Int(0,0) || position == new Vector2Int(2,2))
+        for (int i = 1; i < 3; i++)
         {
-            for (int i = 0; i < 3; i++)
+            if(tiles[i, i] != tiles[i - 1, i - 1])
             {
-                if(tiles[i, i] != currentPlayer)
-                {
-                    break;
-                }
-                if(i == 2)
-                {
-                    return true;
-                }                
+                break;
             }
+            if(tiles[i, i] != TileStatus.None && i == 2)
+            {
+                return tiles[i, i];
+            }                
         }
 
         // Check diagonal left
-        if(position == new Vector2Int(1,1) || position == new Vector2Int(0,2) || position == new Vector2Int(2,0))
+        for (int i = 1; i < 3; i++)
         {
-            for (int i = 0; i < 3; i++)
+            if(tiles[2 - i, i] != tiles[3 - i, i - 1])
             {
-                if(tiles[2 - i, i] != currentPlayer)
+                break;
+            }
+            if(tiles[2 - i, i] != TileStatus.None && i == 2)
+            {
+                return tiles[2 - i, i];
+            }
+        }
+
+        return TileStatus.None;
+    }
+
+    public int MiniMax(TileStatus[,] board, TileStatus currentPlayer)
+    {
+        if(CheckIfWon(board) != TileStatus.None)
+        {
+            return (int)currentPlayer * (int)CheckIfWon(board);
+        }
+
+        Vector2Int move = new Vector2Int(-1, -1);
+        int score = -2;
+
+        for (int y = 0; y < 3; y++)
+        {
+            for (int x = 0; x < 3; x++)
+            {
+                if(board[x, y] == TileStatus.None)
                 {
-                    break;
-                }
-                if(i == 2)
-                {
-                    return true;
+                    TileStatus[,] newBoard = (TileStatus[,]) board.Clone();
+                    newBoard[x, y] = currentPlayer;
+                    int scoreForTheMove = -MiniMax(newBoard, (TileStatus)((int)currentPlayer * -1));
+                    if(scoreForTheMove > score)
+                    {
+                        score = scoreForTheMove;
+                        move = new Vector2Int(x, y);
+                    }
                 }
             }
         }
 
-        return false;
+        if(move == new Vector2Int(-1, -1))
+        {
+            return 0;
+        }
+
+        return score;
+    }
+
+    private int GetOpenTiles(TileStatus[,] board)
+    {
+        int count = 0;
+        foreach (TileStatus status in board)
+        {
+            if(status == TileStatus.None)
+            {
+                count++;
+            }
+        }
+        return count;
     }
 }
